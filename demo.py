@@ -36,12 +36,13 @@ def main(
     im_A: str = "assets/P0634995_cm9818.jpg",
     im_B: str = "assets/P0635004_cm7430.jpg",
     save_path: str = "demo/matches_P.jpg",
+    num_keypoints: int | None = None,
 ):
     model = LoMa(matcher)
 
     # NOTE: you can also simply use the kptsA, kptsB = model.match(im_A, im_B) API
-    kpts_A, desc_A, h1, w1 = model.detect_and_describe(im_A)
-    kpts_B, desc_B, h2, w2 = model.detect_and_describe(im_B)
+    kpts_A, desc_A, h1, w1 = model.detect_and_describe(im_A, num_keypoints=num_keypoints)
+    kpts_B, desc_B, h2, w2 = model.detect_and_describe(im_B, num_keypoints=num_keypoints)
     with torch.inference_mode():
         scores = model(kpts_A, kpts_B, desc_A, desc_B)["scores"]
     m0, *_ = filter_matches(scores, model.cfg.filter_threshold)
@@ -62,9 +63,21 @@ def main(
     canvas.paste(Image.open(im_B).convert("RGB"), (w1, 0))
     draw = ImageDraw.Draw(canvas)
     rng = np.random.default_rng(0)
+    # Scale marker/line thickness to canvas size so they stay visible on very large images.
+    point_radius = max(3, round(max(canvas.size) / 1000))
+    line_width = max(2, round(max(canvas.size) / 10000))
     for (x1, y1), (x2, y2) in zip(matched_A, matched_B):
         color = tuple(rng.integers(0, 256, 3).tolist())
-        draw.line([(x1, y1), (x2 + w1, y2)], fill=color, width=1)
+        x2c = x2 + w1
+        draw.line([(x1, y1), (x2c, y2)], fill=color, width=line_width)
+        draw.ellipse(
+            (x1 - point_radius, y1 - point_radius, x1 + point_radius, y1 + point_radius),
+            fill=color,
+        )
+        draw.ellipse(
+            (x2c - point_radius, y2 - point_radius, x2c + point_radius, y2 + point_radius),
+            fill=color,
+        )
 
     save_path_p.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(save_path_p)
