@@ -69,7 +69,7 @@ def main(
     for (x1, y1), (x2, y2) in zip(matched_A, matched_B):
         color = tuple(rng.integers(0, 256, 3).tolist())
         x2c = x2 + w1
-        draw.line([(x1, y1), (x2c, y2)], fill=color, width=line_width)
+        #draw.line([(x1, y1), (x2c, y2)], fill=color, width=line_width)
         draw.ellipse(
             (x1 - point_radius, y1 - point_radius, x1 + point_radius, y1 + point_radius),
             fill=color,
