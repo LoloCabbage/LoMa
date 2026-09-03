@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 import numpy as np
 import torch
@@ -31,20 +32,38 @@ def draw_keypoints(
     print(f"Saved {len(kpts_xy)} keypoints to {save_path}")
 
 
+def print_runtime(label: str, seconds: float) -> None:
+    print(f"[runtime] {label}: {seconds * 1000:.2f} ms ({seconds:.4f} s)")
+
+
+def sync_if_cuda() -> None:
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+
 def main(
     matcher: LoMaConfig = LoMaB(),
-    im_A: str = "assets/P0634995_cm9818.jpg",
-    im_B: str = "assets/P0635004_cm7430.jpg",
-    save_path: str = "demo/matches_P.jpg",
+    im_A: str = "assets/DJI_20250409111805.jpg",
+    im_B: str = "assets/DJI_20250409111807.jpg",
+    save_path: str = "demo/matches_DJI.jpg",
     num_keypoints: int | None = None,
 ):
     model = LoMa(matcher)
 
     # NOTE: you can also simply use the kptsA, kptsB = model.match(im_A, im_B) API
+    sync_if_cuda()
+    t0 = time.perf_counter()
     kpts_A, desc_A, h1, w1 = model.detect_and_describe(im_A, num_keypoints=num_keypoints)
     kpts_B, desc_B, h2, w2 = model.detect_and_describe(im_B, num_keypoints=num_keypoints)
+    sync_if_cuda()
+    print_runtime("feature extraction (both images)", time.perf_counter() - t0)
+
     with torch.inference_mode():
+        sync_if_cuda()
+        t1 = time.perf_counter()
         scores = model(kpts_A, kpts_B, desc_A, desc_B)["scores"]
+        sync_if_cuda()
+        print_runtime("match", time.perf_counter() - t1)
     m0, *_ = filter_matches(scores, model.cfg.filter_threshold)
     valid = m0[0] > -1
     matched_A = to_pixel_coords(kpts_A[0][torch.where(valid)[0]], h1, w1).cpu().numpy()
@@ -53,8 +72,8 @@ def main(
     save_path_p = Path(save_path)
     kpts_A_px = to_pixel_coords(kpts_A[0], h1, w1).cpu().numpy()
     kpts_B_px = to_pixel_coords(kpts_B[0], h2, w2).cpu().numpy()
-    kpts_A_save = save_path_p.with_name(f"{save_path_p.stem}_kpts_A{save_path_p.suffix}")
-    kpts_B_save = save_path_p.with_name(f"{save_path_p.stem}_kpts_B{save_path_p.suffix}")
+    kpts_A_save = save_path_p.with_name(f"{save_path_p.stem}_kpts_A_{num_keypoints}{save_path_p.suffix}")
+    kpts_B_save = save_path_p.with_name(f"{save_path_p.stem}_kpts_B_{num_keypoints}{save_path_p.suffix}")
     draw_keypoints(im_A, kpts_A_px, kpts_A_save)
     draw_keypoints(im_B, kpts_B_px, kpts_B_save)
 
@@ -80,6 +99,7 @@ def main(
         )
 
     save_path_p.parent.mkdir(parents=True, exist_ok=True)
+    save_path_p = save_path_p.with_name(f"{save_path_p.stem}_{num_keypoints}{save_path_p.suffix}")
     canvas.save(save_path_p)
     print(f"Saved {len(matched_A)} matches to {save_path_p}")
 
